@@ -2,13 +2,8 @@
 Tests for the CLI functionality.
 """
 
-import tempfile
-from io import StringIO
-from pathlib import Path
-from unittest.mock import patch
-
-import pytest
 import toml
+from click.testing import CliRunner
 
 from configistate.cli import load_aliases, main, resolve_config_path
 
@@ -16,166 +11,130 @@ from configistate.cli import load_aliases, main, resolve_config_path
 class TestCLI:
     """Test cases for the CLI functionality."""
 
-    def test_load_aliases(self):
+    def test_load_aliases(self, tmp_path, monkeypatch):
         """Test loading aliases from ~/.confy.rc."""
         # Create a temporary .confy.rc file
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".toml", delete=False
-        ) as f:
-            toml.dump(
-                {
-                    "aliases": {
-                        "config1": "/path/to/config1.toml",
-                        "config2": "/path/to/config2.toml",
-                    }
-                },
-                f,
-            )
-            confy_rc_path = f.name
+        confy_rc_content = {
+            "aliases": {
+                "config1": "/path/to/config1.toml",
+                "config2": "/path/to/config2.toml",
+            }
+        }
+        confy_rc_path = tmp_path / ".confy.rc"
+        with open(confy_rc_path, "w") as f:
+            toml.dump(confy_rc_content, f)
 
-        try:
-            with patch("configistate.cli.Path.home") as mock_home:
-                mock_home.return_value = Path(confy_rc_path).parent
-                with patch("configistate.cli.Path.exists") as mock_exists:
-                    mock_exists.return_value = True
-                    with patch("builtins.open", open):
-                        # Mock the path to point to our test file
-                        with patch(
-                            "configistate.cli.Path.__truediv__"
-                        ) as mock_div:
-                            mock_div.return_value = Path(confy_rc_path)
-                            aliases = load_aliases()
+        # Mock Path.home() to return our temp directory
+        monkeypatch.setattr("configistate.cli.Path.home", lambda: tmp_path)
 
-            assert "config1" in aliases
-            assert aliases["config1"] == "/path/to/config1.toml"
-        finally:
-            Path(confy_rc_path).unlink()
+        aliases = load_aliases()
+        assert "config1" in aliases
+        assert aliases["config1"] == "/path/to/config1.toml"
 
-    def test_resolve_config_path_with_alias(self):
+    def test_resolve_config_path_with_alias(self, monkeypatch):
         """Test resolving config path with aliases."""
-        with patch("configistate.cli.load_aliases") as mock_load:
-            mock_load.return_value = {"config1": "/path/to/config1.toml"}
 
-            assert resolve_config_path("config1") == "/path/to/config1.toml"
-            assert (
-                resolve_config_path("/direct/path.toml") == "/direct/path.toml"
-            )
+        def mock_load_aliases():
+            return {"config1": "/path/to/config1.toml"}
 
-    def test_cli_list_sections(self):
+        monkeypatch.setattr("configistate.cli.load_aliases", mock_load_aliases)
+
+        assert resolve_config_path("config1") == "/path/to/config1.toml"
+        assert resolve_config_path("/direct/path.toml") == "/direct/path.toml"
+
+    def test_cli_list_sections(self, tmp_path):
         """Test CLI list command for sections."""
         # Create a test config file
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".toml", delete=False
-        ) as f:
-            toml.dump(
-                {
-                    "database": {"host": "localhost", "port": 5432},
-                    "cache": {"redis_url": "redis://localhost"},
-                },
-                f,
-            )
-            config_path = f.name
+        config_content = {
+            "database": {"host": "localhost", "port": 5432},
+            "cache": {"redis_url": "redis://localhost"},
+        }
+        config_path = tmp_path / "test.toml"
+        with open(config_path, "w") as f:
+            toml.dump(config_content, f)
 
-        try:
-            # Capture stdout
-            with patch("sys.argv", ["confy", config_path, "--list"]):
-                with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
-                    main()
-                    output = mock_stdout.getvalue()
+        runner = CliRunner()
+        result = runner.invoke(main, [str(config_path), "--list"])
 
-            assert "Sections:" in output
-            assert "database" in output
-            assert "cache" in output
-        finally:
-            Path(config_path).unlink()
+        assert result.exit_code == 0
+        assert "Sections:" in result.output
+        assert "database" in result.output
+        assert "cache" in result.output
 
-    def test_cli_list_variables(self):
+    def test_cli_list_variables(self, tmp_path):
         """Test CLI list command for variables in a section."""
         # Create a test config file
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".toml", delete=False
-        ) as f:
-            toml.dump({"database": {"host": "localhost", "port": 5432}}, f)
-            config_path = f.name
+        config_content = {"database": {"host": "localhost", "port": 5432}}
+        config_path = tmp_path / "test.toml"
+        with open(config_path, "w") as f:
+            toml.dump(config_content, f)
 
-        try:
-            # Capture stdout
-            with patch(
-                "sys.argv", ["confy", config_path, "--list", "database"]
-            ):
-                with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
-                    main()
-                    output = mock_stdout.getvalue()
+        runner = CliRunner()
+        result = runner.invoke(main, [str(config_path), "--list", "database"])
 
-            assert "Variables in section" in output
-            assert "host" in output
-            assert "port" in output
-        finally:
-            Path(config_path).unlink()
+        assert result.exit_code == 0
+        assert "Variables in section" in result.output
+        assert "host" in result.output
+        assert "port" in result.output
 
-    def test_cli_get_value(self):
+    def test_cli_get_value(self, tmp_path):
         """Test CLI get command."""
         # Create a test config file
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".toml", delete=False
-        ) as f:
-            toml.dump({"database": {"host": "localhost", "port": 5432}}, f)
-            config_path = f.name
+        config_content = {"database": {"host": "localhost", "port": 5432}}
+        config_path = tmp_path / "test.toml"
+        with open(config_path, "w") as f:
+            toml.dump(config_content, f)
 
-        try:
-            # Test getting a value
-            with patch(
-                "sys.argv", ["confy", config_path, "--get", "database.host"]
-            ):
-                with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
-                    main()
-                    output = mock_stdout.getvalue().strip()
+        runner = CliRunner()
+        result = runner.invoke(
+            main, [str(config_path), "--get", "database.host"]
+        )
 
-            assert output == "localhost"
-        finally:
-            Path(config_path).unlink()
+        assert result.exit_code == 0
+        assert result.output.strip() == "localhost"
 
-    def test_cli_set_value(self):
+    def test_cli_set_value(self, tmp_path):
         """Test CLI set command."""
         # Create a test config file
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".toml", delete=False
-        ) as f:
-            toml.dump({"database": {"host": "localhost"}}, f)
-            config_path = f.name
+        config_content = {"database": {"host": "localhost"}}
+        config_path = tmp_path / "test.toml"
+        with open(config_path, "w") as f:
+            toml.dump(config_content, f)
 
-        try:
-            # Test setting a value
-            with patch(
-                "sys.argv",
-                ["confy", config_path, "--set", "database.port", "5432"],
-            ):
-                with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
-                    main()
-                    output = mock_stdout.getvalue()
+        runner = CliRunner()
 
-            assert "Set 'database.port' = '5432'" in output
+        # Test setting a value
+        result = runner.invoke(
+            main, [str(config_path), "--set", "database.port", "5432"]
+        )
+        assert result.exit_code == 0
+        assert "Set 'database.port' = '5432'" in result.output
 
-            # Verify the value was actually set
-            with patch(
-                "sys.argv", ["confy", config_path, "--get", "database.port"]
-            ):
-                with patch("sys.stdout", new_callable=StringIO) as mock_stdout:
-                    main()
-                    output = mock_stdout.getvalue().strip()
-
-            assert output == "5432"
-        finally:
-            Path(config_path).unlink()
+        # Verify the value was actually set
+        result = runner.invoke(
+            main, [str(config_path), "--get", "database.port"]
+        )
+        assert result.exit_code == 0
+        assert result.output.strip() == "5432"
 
     def test_cli_nonexistent_file(self):
         """Test CLI with nonexistent config file."""
-        with patch(
-            "sys.argv", ["confy", "/nonexistent/config.toml", "--list"]
-        ):
-            with patch("sys.stderr", new_callable=StringIO) as mock_stderr:
-                with pytest.raises(SystemExit) as exc_info:
-                    main()
+        runner = CliRunner()
+        result = runner.invoke(main, ["/nonexistent/config.toml", "--list"])
 
-                assert exc_info.value.code == 1
-                assert "Configuration file not found" in mock_stderr.getvalue()
+        assert result.exit_code == 1
+        assert "Configuration file not found" in result.output
+
+    def test_cli_no_action_specified(self, tmp_path):
+        """Test CLI when no action is specified."""
+        config_path = tmp_path / "test.toml"
+        config_path.write_text("[test]\nkey = 'value'")
+
+        runner = CliRunner()
+        result = runner.invoke(main, [str(config_path)])
+
+        assert result.exit_code == 1
+        assert (
+            "Exactly one of --list, --get, or --set must be specified"
+            in result.output
+        )
