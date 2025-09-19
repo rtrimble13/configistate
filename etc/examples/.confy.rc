@@ -1,0 +1,6 @@
+# Example .confy.rc file for defining aliases
+
+[aliases]
+sample = "etc/examples/sample.toml"
+prod = "/etc/myapp/production.toml"
+dev = "/home/user/myapp/development.toml"

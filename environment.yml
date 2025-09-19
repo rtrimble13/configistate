@@ -1,0 +1,17 @@
+name: configistate
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python>=3.8
+  - pip
+  - setuptools
+  - wheel
+  - toml
+  - click>=8.0.0
+  - pytest>=7.0.0
+  - black>=22.0.0
+  - flake8>=4.0.0
+  - isort>=5.10.0
+  - pip:
+    - -e .
