@@ -21,3 +21,4 @@ The two output of this project are `configistate`, a python library that can be 
 - Use best practices for developing python code.
 - Write unit tests for all new features using pytest framework.
 - Run linting checks before committing code.
+- Document all features and provide examples as appropriate.
