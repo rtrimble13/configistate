@@ -4,10 +4,11 @@ on:
   push:
     branches:
       - main
+      - 'feature/*'
   pull_request:
     branches:
       - main
-
+      - 'feature/*'
 jobs:
   dependency-review:
     runs-on: ubuntu-latest
@@ -20,4 +21,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - uses: actions/dependency-review-action@v3
+      - name: Dependency Review (PR only)
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@v3
