@@ -8,7 +8,6 @@ version = "0.1.0"
 description = "Consistent, robust TOML config management with a friendly CLI"
 readme = "README.md"
 license = "MIT"
-license-files = ["LICENSE"]
 authors = [
     { name = "Roger Trimble" }
 ]
