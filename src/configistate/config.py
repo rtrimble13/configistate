@@ -2,11 +2,22 @@
 Core configuration handling functionality.
 """
 
+import re
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
-from urllib.parse import urlparse
 
-import toml
+# Prefer stdlib tomllib for reading (Python 3.11+),
+# fall back to third-party 'toml'.
+try:
+    import tomllib as _tomllib  # type: ignore
+except Exception:
+    _tomllib = None
+
+try:
+    # third-party toml (used for writing and as fallback reader)
+    import toml as _toml
+except Exception:
+    _toml = None
 
 
 class Config:
@@ -42,8 +53,20 @@ class Config:
                 f"Configuration file not found: {config_path}"
             )
 
-        with open(self.config_path, "r", encoding="utf-8") as f:
-            self._data = toml.load(f)
+        # Use stdlib tomllib (binary file) when available,
+        # otherwise use third-party toml (text).
+        if _tomllib is not None:
+            with open(self.config_path, "rb") as f:
+                self._data = _tomllib.load(f)
+        elif _toml is not None:
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                self._data = _toml.load(f)
+        else:
+            raise ImportError(
+                "No TOML parser available. Install the 'toml' "
+                "package (pip install toml) "
+                "or run on Python 3.11+ which provides tomllib."
+            )
 
         # Process file:// variables
         self._process_file_variables(self._data)
@@ -64,8 +87,14 @@ class Config:
         # Create directory if it doesn't exist
         save_path.parent.mkdir(parents=True, exist_ok=True)
 
+        if _toml is None:
+            raise ImportError(
+                "Saving TOML requires the third-party 'toml' "
+                "package. Install it (pip install toml)."
+            )
+
         with open(save_path, "w", encoding="utf-8") as f:
-            toml.dump(self._data, f)
+            _toml.dump(self._data, f)
 
         self.config_path = save_path
 
@@ -81,8 +110,8 @@ class Config:
                 self._process_file_variables(value)
             elif isinstance(value, str) and value.startswith("file://"):
                 # Parse the file:// URL and read the file content
-                parsed = urlparse(value)
-                file_path = Path(parsed.path)
+                file_path_str = re.sub(r"^file://", "", value)
+                file_path = Path(file_path_str).expanduser()
 
                 # Make path relative to config file if it's not absolute
                 if not file_path.is_absolute() and self.config_path:

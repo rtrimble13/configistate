@@ -13,7 +13,20 @@ help:
 
 # Create the project environment and build project
 build:
-	python -m pip install -e .[dev]
+	@echo "Creating/using conda env 'confy' and installing dev dependencies"
+	@if command -v conda >/dev/null 2>&1; then \
+		if ! conda env list | awk '{print $$1}' | grep -qx confy; then \
+			echo "Creating conda env 'confy'..."; \
+			conda create -n confy python=3.11 -y; \
+		else \
+			echo "Conda env 'confy' already exists"; \
+		fi; \
+		echo "Installing editable package into 'confy'..."; \
+		conda run -n confy python -m pip install -e .[dev]; \
+	else \
+		echo "conda not found, falling back to system pip"; \
+		python -m pip install -e .[dev]; \
+	fi
 
 # Install the project
 install:
