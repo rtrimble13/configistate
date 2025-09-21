@@ -1,22 +1,3 @@
-# Conda recipe for configistate package
-# 
-# This meta.yaml file defines a conda package for configistate, a configuration
-# utility that provides TOML config management with a friendly CLI.
-#
-# To build this package:
-# 1. Install conda-build: conda install conda-build
-# 2. Build the package: conda build meta.yaml
-#
-# For conda-forge submission:
-# 1. Fork https://github.com/conda-forge/staged-recipes
-# 2. Create a new recipe directory under recipes/configistate/
-# 3. Copy this meta.yaml file to that directory
-# 4. Update the sha256 hash with the actual PyPI package hash
-# 5. Submit a pull request
-#
-# Note: The sha256 hash must be updated when the package is published to PyPI.
-# You can get the hash from https://pypi.org/project/configistate/#files
-
 {% set name = "configistate" %}
 {% set version = "0.1.0" %}
 
@@ -25,24 +6,24 @@ package:
   version: {{ version }}
 
 source:
-  url: https://pypi.io/packages/source/{{ name[0] }}/{{ name }}/configistate-{{ version }}.tar.gz
-  sha256: # This will need to be filled in when the package is published to PyPI
+  url: https://pypi.org/packages/source/{{ name[0] }}/{{ name }}/configistate-{{ version }}.tar.gz
+  sha256: 4faaa6a5e43420743e2f5176f84bbffb57a6ef965545fe1a9cebe8bd87e58555
 
 build:
-  noarch: python
-  script: {{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
-  number: 0
+  skip: true  # [py<38]
   entry_points:
     - confy = configistate.cli:main
+  script: {{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
+  number: 0
 
 requirements:
   host:
-    - python >=3.8
-    - pip
+    - python
     - setuptools >=69
     - wheel
+    - pip
   run:
-    - python >=3.8
+    - python
     - toml >=0.10.0
     - click >=8.0.0
     - tomli >=2.0  # [py<311]
@@ -50,26 +31,16 @@ requirements:
 test:
   imports:
     - configistate
-    - configistate.config
-    - configistate.cli
   commands:
+    - pip check
     - confy --help
   requires:
-    - pytest >=7.0.0
+    - pip
 
 about:
-  home: https://github.com/rtrimble13/configistate
-  license: MIT
-  license_family: MIT
-  license_file: LICENSE
   summary: Consistent, robust TOML config management with a friendly CLI
-  description: |
-    A configuration utility that provides a consistent, robust framework for 
-    incorporating configuration files in software projects. Features include 
-    Python library support, CLI tool (confy), TOML support, file:// path 
-    variables, and config file aliases.
-  doc_url: https://github.com/rtrimble13/configistate
-  dev_url: https://github.com/rtrimble13/configistate
+  license: MIT
+  license_file: LICENSE
 
 extra:
   recipe-maintainers:
