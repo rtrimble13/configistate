@@ -1,4 +1,6 @@
 name: Security Checks
+permissions:
+  contents: read
 
 on:
   push:
