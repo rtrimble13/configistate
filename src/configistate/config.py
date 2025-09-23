@@ -35,6 +35,9 @@ class Config:
         """
         self.config_path = Path(config_path) if config_path else None
         self._data: Dict[str, Any] = {}
+        self._file_mappings: Dict[str, Path] = (
+            {}
+        )  # Maps config keys to file paths
 
         if self.config_path:
             self.load(self.config_path)
@@ -68,8 +71,9 @@ class Config:
                 "or run on Python 3.11+ which provides tomllib."
             )
 
-        # Process file:// variables
-        self._process_file_variables(self._data)
+        # Clear any existing file mappings and process file:// variables
+        self._file_mappings.clear()
+        self._process_file_variables(self._data, [])
 
     def save(self, config_path: Optional[Union[str, Path]] = None) -> None:
         """
@@ -93,21 +97,92 @@ class Config:
                 "package. Install it (pip install toml)."
             )
 
+        # Save file-based variables back to their original files
+        self._save_file_variables()
+
+        # Create a copy of data with file:// references restored for TOML save
+        save_data = self._prepare_data_for_save()
+
         with open(save_path, "w", encoding="utf-8") as f:
-            _toml.dump(self._data, f)
+            _toml.dump(save_data, f)
 
         self.config_path = save_path
 
-    def _process_file_variables(self, data: Dict[str, Any]) -> None:
+    def _save_file_variables(self) -> None:
+        """
+        Save file-based variables back to their original files.
+        """
+        for config_key, file_path in self._file_mappings.items():
+            try:
+                # Get the current value from the config
+                current_value = self.get(config_key)
+                if current_value is not None:
+                    # Ensure directory exists
+                    file_path.parent.mkdir(parents=True, exist_ok=True)
+
+                    # Write the value back to the file
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        f.write(str(current_value))
+            except Exception as e:
+                print(f"Warning: Could not write to file {file_path}: {e}")
+
+    def _prepare_data_for_save(self) -> Dict[str, Any]:
+        """
+        Prepare configuration data for saving, restoring file:// references.
+
+        Returns:
+            Configuration data with file:// references restored.
+        """
+        # Deep copy the data to avoid modifying the original
+        import copy
+
+        save_data = copy.deepcopy(self._data)
+
+        # Restore file:// references for variables that were loaded from files
+        for config_key, file_path in self._file_mappings.items():
+            keys = config_key.split(".")
+            current = save_data
+
+            # Navigate to the parent dictionary
+            for k in keys[:-1]:
+                if k in current and isinstance(current[k], dict):
+                    current = current[k]
+                else:
+                    # Path doesn't exist, skip this mapping
+                    break
+            else:
+                # Restore the file:// reference
+                final_key = keys[-1]
+                if final_key in current:
+                    # Make path relative to config file if needed
+                    if self.config_path and file_path.is_absolute():
+                        try:
+                            rel_path = file_path.relative_to(
+                                self.config_path.parent
+                            )
+                            current[final_key] = f"file://{rel_path}"
+                        except ValueError:
+                            # Path is not relative to config dir, use absolute
+                            current[final_key] = f"file://{file_path}"
+                    else:
+                        current[final_key] = f"file://{file_path}"
+
+        return save_data
+
+    def _process_file_variables(
+        self, data: Dict[str, Any], key_path: list
+    ) -> None:
         """
         Process file:// variables in the configuration data.
 
         Args:
             data: Configuration data dictionary to process.
+            key_path: Current path in the configuration hierarchy.
         """
         for key, value in data.items():
+            current_key_path = key_path + [key]
             if isinstance(value, dict):
-                self._process_file_variables(value)
+                self._process_file_variables(value, current_key_path)
             elif isinstance(value, str) and value.startswith("file://"):
                 # Parse the file:// URL and read the file content
                 file_path_str = re.sub(r"^file://", "", value)
@@ -116,6 +191,10 @@ class Config:
                 # Make path relative to config file if it's not absolute
                 if not file_path.is_absolute() and self.config_path:
                     file_path = self.config_path.parent / file_path
+
+                # Store the mapping from config key to file path
+                config_key = ".".join(current_key_path)
+                self._file_mappings[config_key] = file_path
 
                 if file_path.exists():
                     try:

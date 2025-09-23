@@ -132,6 +132,112 @@ class TestConfig:
         finally:
             Path(config_path).unlink()
 
+    def test_save_file_variables(self):
+        """Test saving file-based variables back to their original files."""
+        # Create a temporary file with content
+        with tempfile.NamedTemporaryFile(
+            mode="w", delete=False
+        ) as content_file:
+            content_file.write("original_secret")
+            content_path = content_file.name
+
+        # Create a config file that references the content file
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".toml", delete=False
+        ) as config_file:
+            toml.dump(
+                {
+                    "secrets": {"api_key": f"file://{content_path}"},
+                    "database": {"host": "localhost"},
+                },
+                config_file,
+            )
+            config_path = config_file.name
+
+        try:
+            # Load the config
+            config = Config(config_path)
+
+            # Verify the file content was loaded
+            assert config.get("secrets.api_key") == "original_secret"
+
+            # Modify the file-based variable
+            config.set("secrets.api_key", "new_secret_value")
+
+            # Also modify a non-file variable
+            config.set("database.port", 5432)
+
+            # Save the config
+            config.save()
+
+            # Verify the content file was updated
+            with open(content_path, "r", encoding="utf-8") as f:
+                assert f.read() == "new_secret_value"
+
+            # Verify the main config file still has the file:// reference
+            with open(config_path, "r", encoding="utf-8") as f:
+                saved_config = toml.load(f)
+
+            assert saved_config["secrets"]["api_key"].startswith("file://")
+            assert saved_config["database"]["host"] == "localhost"
+            assert saved_config["database"]["port"] == 5432
+
+            # Verify loading the saved config works correctly
+            new_config = Config(config_path)
+            assert new_config.get("secrets.api_key") == "new_secret_value"
+            assert new_config.get("database.host") == "localhost"
+            assert new_config.get("database.port") == 5432
+
+        finally:
+            Path(config_path).unlink()
+            Path(content_path).unlink()
+
+    def test_save_file_variables_relative_path(self):
+        """Test saving file-based variables with relative paths."""
+        # Create a temporary directory structure
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_dir = Path(temp_dir) / "config"
+            config_dir.mkdir()
+
+            # Create a content file in a subdirectory
+            secrets_dir = config_dir / "secrets"
+            secrets_dir.mkdir()
+            content_path = secrets_dir / "api_key.txt"
+            content_path.write_text("relative_secret")
+
+            # Create a config file with relative path reference
+            config_path = config_dir / "app.toml"
+            config_data = {
+                "app": {"name": "myapp"},
+                "secrets": {"api_key": "file://secrets/api_key.txt"},
+            }
+            with open(config_path, "w") as f:
+                toml.dump(config_data, f)
+
+            # Load and modify the config
+            config = Config(config_path)
+            assert config.get("secrets.api_key") == "relative_secret"
+
+            config.set("secrets.api_key", "new_relative_secret")
+            config.save()
+
+            # Verify the content file was updated
+            assert content_path.read_text() == "new_relative_secret"
+
+            # Verify the config file still has relative reference
+            with open(config_path, "r") as f:
+                saved_config = toml.load(f)
+            assert (
+                saved_config["secrets"]["api_key"]
+                == "file://secrets/api_key.txt"
+            )
+
+            # Verify reloading works
+            new_config = Config(config_path)
+            assert new_config.get("secrets.api_key") == "new_relative_secret"
+
     def test_nonexistent_file(self):
         """Test handling of nonexistent config file."""
         with pytest.raises(FileNotFoundError):
