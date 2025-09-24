@@ -55,7 +55,7 @@ doc:
 
 # Create pypi distribution package
 dist:
-	python -m pip install --upgrade build
+	python -m pip install --upgrade build wheel twine packaging readme-renderer setuptools
 	python -m build
 
 # Clean build artifacts
